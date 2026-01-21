@@ -189,6 +189,9 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     category: "SHAKE",
     nodeCryptoName: "shake128",
     outputLength: 32,
+    parameters: [
+      { id: 'outputLength', label: 'Output Length (bits)', type: 'number', required: false, defaultValue: 256, min: 8, max: 8192, placeholder: 'Output length in bits' }
+    ]
   },
   shake256: {
     name: "SHAKE256",
@@ -196,6 +199,9 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     category: "SHAKE",
     nodeCryptoName: "shake256",
     outputLength: 32,
+    parameters: [
+      { id: 'outputLength', label: 'Output Length (bits)', type: 'number', required: false, defaultValue: 256, min: 8, max: 8192, placeholder: 'Output length in bits' }
+    ]
   },
 
   // BLAKE2 family
@@ -205,6 +211,12 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     category: "BLAKE2",
     nodeCryptoName: "blake2b512",
     outputLength: 64,
+    parameters: [
+      { id: 'key', label: 'Key (optional)', type: 'text', required: false, placeholder: 'Enter key for keyed hashing' },
+      { id: 'salt', label: 'Salt (optional)', type: 'text', required: false, generateRandom: true, placeholder: 'Enter salt' },
+      { id: 'personalization', label: 'Personalization (optional)', type: 'text', required: false, placeholder: 'Enter personalization string' },
+      { id: 'outputLength', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 64, min: 1, max: 64 }
+    ]
   },
   blake2s256: {
     name: "BLAKE2s-256",
@@ -212,6 +224,12 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     category: "BLAKE2",
     nodeCryptoName: "blake2s256",
     outputLength: 32,
+    parameters: [
+      { id: 'key', label: 'Key (optional)', type: 'text', required: false, placeholder: 'Enter key for keyed hashing' },
+      { id: 'salt', label: 'Salt (optional)', type: 'text', required: false, generateRandom: true, placeholder: 'Enter salt' },
+      { id: 'personalization', label: 'Personalization (optional)', type: 'text', required: false, placeholder: 'Enter personalization string' },
+      { id: 'outputLength', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 32 }
+    ]
   },
 
   // BLAKE1 family (legacy, use BLAKE2 or BLAKE3 instead)
@@ -315,6 +333,10 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     category: "Modern",
     npmPackage: "blake3",
     outputLength: 32,
+    parameters: [
+      { id: 'key', label: 'Key (optional, for keyed hashing)', type: 'text', required: false, placeholder: 'Enter key for keyed BLAKE3' },
+      { id: 'outputLength', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 64 }
+    ]
   },
 
   // SHA-3 addon functions (advanced XOF and customization)
@@ -323,48 +345,81 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     description: "Customizable SHAKE128 with domain separation",
     category: "Modern",
     outputLength: 32,
+    parameters: [
+      { id: 'N', label: 'Function Name (N)', type: 'text', required: false, placeholder: 'Function name for domain separation' },
+      { id: 'S', label: 'Customization String (S)', type: 'text', required: false, placeholder: 'Customization string' },
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 256 }
+    ]
   },
   cshake256: {
     name: "cSHAKE256",
     description: "Customizable SHAKE256 with domain separation",
     category: "Modern",
     outputLength: 32,
+    parameters: [
+      { id: 'N', label: 'Function Name (N)', type: 'text', required: false, placeholder: 'Function name for domain separation' },
+      { id: 'S', label: 'Customization String (S)', type: 'text', required: false, placeholder: 'Customization string' },
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 512 }
+    ]
   },
   turboshake128: {
     name: "TurboSHAKE128",
     description: "TurboSHAKE128 with domain separation byte",
     category: "Modern",
     outputLength: 32,
+    parameters: [
+      { id: 'D', label: 'Domain Separation Byte (D)', type: 'number', required: false, defaultValue: 0x1f, min: 0, max: 255, placeholder: 'Domain separation byte (0-255)' },
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 256 }
+    ]
   },
   turboshake256: {
     name: "TurboSHAKE256",
     description: "TurboSHAKE256 with domain separation byte",
     category: "Modern",
     outputLength: 32,
+    parameters: [
+      { id: 'D', label: 'Domain Separation Byte (D)', type: 'number', required: false, defaultValue: 0x1f, min: 0, max: 255, placeholder: 'Domain separation byte (0-255)' },
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 512 }
+    ]
   },
   tuplehash256: {
     name: "TupleHash",
     description: "TupleHash for hashing ordered sequences",
     category: "Modern",
     outputLength: 32,
+    parameters: [
+      { id: 'S', label: 'Customization String (S)', type: 'text', required: false, placeholder: 'Customization string' },
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 512 }
+    ]
   },
   parallelhash256: {
     name: "ParallelHash",
     description: "ParallelHash for large data with parallelism parameter",
     category: "Modern",
     outputLength: 32,
+    parameters: [
+      { id: 'B', label: 'Block Size (B)', type: 'number', required: false, defaultValue: 8192, min: 8, max: 65536, placeholder: 'Block size in bytes' },
+      { id: 'S', label: 'Customization String (S)', type: 'text', required: false, placeholder: 'Customization string' },
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 512 }
+    ]
   },
   kt128: {
     name: "KangarooTwelve (128-bit)",
     description: "KangarooTwelve tree hashing (128-bit output)",
     category: "Modern",
     outputLength: 16,
+    parameters: [
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 16, min: 1, max: 256 }
+    ]
   },
   kt256: {
     name: "KangarooTwelve (256-bit)",
     description: "KangarooTwelve tree hashing (256-bit output)",
     category: "Modern",
     outputLength: 32,
+    parameters: [
+      { id: 'dkLen', label: 'Output Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 1, max: 512 }
+    ]
   },
 
   // Similarity algorithms
@@ -415,6 +470,10 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     outputLength: 8,
     uiMode: 'similarity',
     supportsComparison: true,
+    parameters: [
+      { id: 'lexicon', label: 'Lexicon (comma-separated words)', type: 'textarea', required: true, placeholder: 'Enter lexicon words separated by commas, e.g., word1, word2, word3', defaultValue: 'test, words, for, demo' },
+      { id: 'minIntersection', label: 'Minimum Intersection', type: 'number', required: false, defaultValue: 3, min: 0, max: 100 }
+    ]
   },
 
 

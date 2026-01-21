@@ -46,18 +46,67 @@ export async function computeHashClient(
     case "sha3-256": hash = sdk.sha3_256(data); break;
     case "sha3-384": hash = sdk.sha3_384(data); break;
     case "sha3-512": hash = sdk.sha3_512(data); break;
-    case "shake128": hash = sdk.shake128(data, 256); break;
-    case "shake256": hash = sdk.shake256(data, 256); break;
+    case "shake128": {
+      const outputLength = params?.outputLength || 256;
+      hash = sdk.shake128(data, outputLength);
+      break;
+    }
+    case "shake256": {
+      const outputLength = params?.outputLength || 256;
+      hash = sdk.shake256(data, outputLength);
+      break;
+    }
 
     // SHA-3 addon functions
-    case "cshake128": hash = Buffer.from(sdk.cshake128(data, { dkLen: 32 })).toString('hex'); break;
-    case "cshake256": hash = Buffer.from(sdk.cshake256(data, { dkLen: 32 })).toString('hex'); break;
-    case "turboshake128": hash = Buffer.from(sdk.turboshake128(data, { dkLen: 32 })).toString('hex'); break;
-    case "turboshake256": hash = Buffer.from(sdk.turboshake256(data, { dkLen: 32 })).toString('hex'); break;
-    case "tuplehash256": hash = Buffer.from(sdk.tuplehash256([data], { dkLen: 32 })).toString('hex'); break;
-    case "parallelhash256": hash = Buffer.from(sdk.parallelhash256(data, { dkLen: 32 })).toString('hex'); break;
-    case "kt128": hash = Buffer.from(sdk.kt128(data, { dkLen: 16 })).toString('hex'); break;
-    case "kt256": hash = Buffer.from(sdk.kt256(data, { dkLen: 32 })).toString('hex'); break;
+    case "cshake128": {
+      const dkLen = params?.dkLen || 32;
+      const N = params?.N;
+      const S = params?.S;
+      hash = Buffer.from(sdk.cshake128(data, { dkLen, ...(N && { N }), ...(S && { S }) })).toString('hex');
+      break;
+    }
+    case "cshake256": {
+      const dkLen = params?.dkLen || 32;
+      const N = params?.N;
+      const S = params?.S;
+      hash = Buffer.from(sdk.cshake256(data, { dkLen, ...(N && { N }), ...(S && { S }) })).toString('hex');
+      break;
+    }
+    case "turboshake128": {
+      const dkLen = params?.dkLen || 32;
+      const D = params?.D !== undefined ? params.D : 0x1f;
+      hash = Buffer.from(sdk.turboshake128(data, { dkLen, D })).toString('hex');
+      break;
+    }
+    case "turboshake256": {
+      const dkLen = params?.dkLen || 32;
+      const D = params?.D !== undefined ? params.D : 0x1f;
+      hash = Buffer.from(sdk.turboshake256(data, { dkLen, D })).toString('hex');
+      break;
+    }
+    case "tuplehash256": {
+      const dkLen = params?.dkLen || 32;
+      const S = params?.S;
+      hash = Buffer.from(sdk.tuplehash256([data], { dkLen, ...(S && { S }) })).toString('hex');
+      break;
+    }
+    case "parallelhash256": {
+      const dkLen = params?.dkLen || 32;
+      const B = params?.B || 8192;
+      const S = params?.S;
+      hash = Buffer.from(sdk.parallelhash256(data, { dkLen, B, ...(S && { S }) })).toString('hex');
+      break;
+    }
+    case "kt128": {
+      const dkLen = params?.dkLen || 16;
+      hash = Buffer.from(sdk.kt128(data, { dkLen })).toString('hex');
+      break;
+    }
+    case "kt256": {
+      const dkLen = params?.dkLen || 32;
+      hash = Buffer.from(sdk.kt256(data, { dkLen })).toString('hex');
+      break;
+    }
 
     // Keccak
     case "keccak-224": hash = sdk.keccak_224(data); break;
@@ -66,11 +115,49 @@ export async function computeHashClient(
     case "keccak-512": hash = sdk.keccak_512(data); break;
 
     // BLAKE2
-    case "blake2b512": hash = sdk.blake2b(data); break;
-    case "blake2s256": hash = sdk.blake2s(data); break;
+    case "blake2b512": {
+      const key = params?.key;
+      const salt = params?.salt;
+      const personalization = params?.personalization;
+      const outputLength = params?.outputLength || 64;
+      const options: any = { outputLength };
+      if (key) {
+        // BLAKE2 key must be Uint8Array
+        options.key = typeof key === 'string' ? new TextEncoder().encode(key) : new Uint8Array(key);
+      }
+      if (salt) options.salt = salt; // Can be string or Uint8Array
+      if (personalization) options.personalization = personalization; // Can be string or Uint8Array
+      hash = sdk.blake2b(data, options);
+      break;
+    }
+    case "blake2s256": {
+      const key = params?.key;
+      const salt = params?.salt;
+      const personalization = params?.personalization;
+      const outputLength = params?.outputLength || 32;
+      const options: any = { outputLength };
+      if (key) {
+        // BLAKE2 key must be Uint8Array
+        options.key = typeof key === 'string' ? new TextEncoder().encode(key) : new Uint8Array(key);
+      }
+      if (salt) options.salt = salt; // Can be string or Uint8Array
+      if (personalization) options.personalization = personalization; // Can be string or Uint8Array
+      hash = sdk.blake2s(data, options);
+      break;
+    }
 
     // BLAKE3
-    case "blake3": hash = sdk.blake3(data); break;
+    case "blake3": {
+      const key = params?.key;
+      const outputLength = params?.outputLength || 32;
+      if (key) {
+        const keyBytes = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+        hash = sdk.blake3_keyed(keyBytes, data, { outputLength });
+      } else {
+        hash = sdk.blake3(data, { outputLength });
+      }
+      break;
+    }
 
     // BLAKE1 (legacy)
     case "blake1-224": hash = sdk.blake224(data); break;
@@ -156,7 +243,13 @@ export async function computeHashClient(
     case "bbitminhash": hash = sdk.bbitMinhash(data); break;
     case "superminhash": hash = sdk.superminhash(data); break;
     case "nilsimsa": hash = sdk.nilsimsa(data); break;
-    case "imatch": hash = sdk.imatch(data, { lexicon: ["test", "words", "for", "demo"] }); break;
+    case "imatch": {
+      const lexiconStr = params?.lexicon || "test, words, for, demo";
+      const lexicon = lexiconStr.split(',').map((w: string) => w.trim()).filter((w: string) => w.length > 0);
+      const minIntersection = params?.minIntersection || 3;
+      hash = sdk.imatch(data, { lexicon, minIntersection });
+      break;
+    }
 
     // MAC and KDF functions
     case "hmac": {
