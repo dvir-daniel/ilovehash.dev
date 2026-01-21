@@ -24,6 +24,7 @@ export async function computeHashClient(
   algorithm: string,
   input: string,
   format: "hex" | "base64" = "hex",
+  params?: Record<string, any>
 ): Promise<HashResult> {
 
   // Compute hash using the SDK directly
@@ -104,12 +105,50 @@ export async function computeHashClient(
     case "xxhash64": hash = sdk.xxhash64(data); break;
     case "xxhash128": hash = sdk.xxhash128(data); break;
 
-    // Password hashing (simplified - async)
-    case "argon2i": hash = await sdk.argon2i(input, { salt: "salt12345678901234567890123456789012", iterations: 2, memory: 65536, parallelism: 1 }); break;
-    case "argon2d": hash = await sdk.argon2d(input, { salt: "salt12345678901234567890123456789012", iterations: 2, memory: 65536, parallelism: 1 }); break;
-    case "argon2id": hash = await sdk.argon2id(input, { salt: "salt12345678901234567890123456789012", iterations: 2, memory: 65536, parallelism: 1 }); break;
-    case "scrypt": hash = sdk.scrypt.scrypt(input, "salt12345678901234567890123456789012", 16384, 8, 1, 64); break;
-    case "pbkdf2": hash = sdk.pbkdf2Sha256(input, "salt12345678901234567890123456789012", 10000, 32); break;
+    // Password hashing (with parameters)
+    case "argon2i": {
+      const salt = params?.salt || "salt12345678901234567890123456789012";
+      const iterations = params?.iterations || 3;
+      const memory = params?.memory || 65536;
+      const parallelism = params?.parallelism || 4;
+      const keyLength = params?.keyLength || 32;
+      hash = await sdk.argon2i(input, { salt, iterations, memory, parallelism, keyLength });
+      break;
+    }
+    case "argon2d": {
+      const salt = params?.salt || "salt12345678901234567890123456789012";
+      const iterations = params?.iterations || 3;
+      const memory = params?.memory || 65536;
+      const parallelism = params?.parallelism || 4;
+      const keyLength = params?.keyLength || 32;
+      hash = await sdk.argon2d(input, { salt, iterations, memory, parallelism, keyLength });
+      break;
+    }
+    case "argon2id": {
+      const salt = params?.salt || "salt12345678901234567890123456789012";
+      const iterations = params?.iterations || 3;
+      const memory = params?.memory || 65536;
+      const parallelism = params?.parallelism || 4;
+      const keyLength = params?.keyLength || 32;
+      hash = await sdk.argon2id(input, { salt, iterations, memory, parallelism, keyLength });
+      break;
+    }
+    case "scrypt": {
+      const salt = params?.salt || "salt12345678901234567890123456789012";
+      const N = params?.N || 16384;
+      const r = params?.r || 8;
+      const p = params?.p || 1;
+      const dkLen = params?.dkLen || 64;
+      hash = sdk.scrypt.scrypt(input, salt, N, r, p, dkLen);
+      break;
+    }
+    case "pbkdf2": {
+      const salt = params?.salt || "salt12345678901234567890123456789012";
+      const iterations = params?.iterations || 10000;
+      const keyLength = params?.keyLength || 32;
+      hash = sdk.pbkdf2Sha256(input, salt, iterations, keyLength);
+      break;
+    }
 
     // Similarity hashes
     case "simhash": hash = sdk.simhash(data); break;
@@ -120,8 +159,19 @@ export async function computeHashClient(
     case "imatch": hash = sdk.imatch(data, { lexicon: ["test", "words", "for", "demo"] }); break;
 
     // MAC and KDF functions
-    case "hmac": hash = sdk.hmacSha256("key12345678901234567890123456789012", data); break;
-    case "hkdf": hash = sdk.hkdfSha256("ikm12345678901234567890123456789012", "salt12345678901234567890123456789012", "info", 32); break;
+    case "hmac": {
+      const key = params?.key || "key12345678901234567890123456789012";
+      hash = sdk.hmacSha256(key, data);
+      break;
+    }
+    case "hkdf": {
+      const ikm = params?.ikm || "ikm12345678901234567890123456789012";
+      const salt = params?.salt || "salt12345678901234567890123456789012";
+      const info = params?.info || "";
+      const keyLength = params?.keyLength || 32;
+      hash = sdk.hkdfSha256(ikm, salt, info, keyLength);
+      break;
+    }
 
     default:
       throw new Error(`Algorithm ${algorithm} not implemented`);
@@ -150,10 +200,11 @@ export async function computeHashWithTiming(
   algorithm: string,
   input: string,
   format: "hex" | "base64" = "hex",
+  params?: Record<string, any>
 ): Promise<HashResult> {
   const startTime = performance.now();
   try {
-    const result = await computeHashClient(algorithm, input, format);
+    const result = await computeHashClient(algorithm, input, format, params);
     const endTime = performance.now();
     return {
       ...result,
@@ -172,4 +223,32 @@ export async function computeHashWithTiming(
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
+}
+
+/**
+ * Compute similarity comparison for two inputs
+ * Returns both hashes and comparison metrics
+ */
+export async function computeSimilarityComparison(
+  algorithm: string,
+  input1: string,
+  input2: string,
+  format: "hex" | "base64" = "hex"
+): Promise<{
+  hash1: string;
+  hash2: string;
+  result1: HashResult;
+  result2: HashResult;
+}> {
+  const [result1, result2] = await Promise.all([
+    computeHashClient(algorithm, input1, format),
+    computeHashClient(algorithm, input2, format),
+  ]);
+
+  return {
+    hash1: result1.hash,
+    hash2: result2.hash,
+    result1,
+    result2,
+  };
 }

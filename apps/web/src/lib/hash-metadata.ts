@@ -1,6 +1,22 @@
 // Hash algorithm metadata - safe for client components
 // This file contains only static data and pure functions
 
+// UI mode types for different algorithm requirements
+export type AlgorithmUIMode = 'standard' | 'password' | 'similarity' | 'hmac' | 'hkdf';
+
+// Parameter configuration for algorithm-specific inputs
+export interface ParameterConfig {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'textarea';
+  required: boolean;
+  defaultValue?: string | number;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  generateRandom?: boolean; // For salt generation
+}
+
 // Type for hash algorithm configuration
 export interface HashAlgorithm {
   name: string;
@@ -12,6 +28,10 @@ export interface HashAlgorithm {
   isSlow?: boolean; // For algorithms that should warn about performance
   legacy?: boolean; // For deprecated algorithms that should be avoided
   demo?: boolean; // Demo/simplified implementation (not cryptographically accurate)
+  // UI configuration fields
+  uiMode?: AlgorithmUIMode; // Defaults to 'standard' if not specified
+  parameters?: ParameterConfig[]; // Algorithm-specific parameters
+  supportsComparison?: boolean; // For similarity algorithms
 }
 
 // Hash tool interfaces
@@ -353,36 +373,48 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     description: "Locality-sensitive hash for similarity detection",
     category: "Similarity",
     outputLength: 8,
+    uiMode: 'similarity',
+    supportsComparison: true,
   },
   minhash: {
     name: "MinHash",
     description: "Min-wise independent permutations for Jaccard similarity",
     category: "Similarity",
     outputLength: 8,
+    uiMode: 'similarity',
+    supportsComparison: true,
   },
   bbitminhash: {
     name: "b-bit MinHash",
     description: "Space-efficient variant of MinHash for Jaccard similarity",
     category: "Similarity",
     outputLength: 8,
+    uiMode: 'similarity',
+    supportsComparison: true,
   },
   superminhash: {
     name: "SuperMinHash",
     description: "Improved MinHash algorithm (Ertl 2017) for better accuracy",
     category: "Similarity",
     outputLength: 8,
+    uiMode: 'similarity',
+    supportsComparison: true,
   },
   nilsimsa: {
     name: "Nilsimsa",
     description: "Locality-sensitive hash for text/spam detection",
     category: "Similarity",
     outputLength: 32,
+    uiMode: 'similarity',
+    supportsComparison: true,
   },
   imatch: {
     name: "I-Match",
     description: "Lexicon-based duplicate detection algorithm",
     category: "Similarity",
     outputLength: 8,
+    uiMode: 'similarity',
+    supportsComparison: true,
   },
 
 
@@ -466,6 +498,14 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     npmPackage: "argon2",
     isSlow: true,
     outputLength: 32,
+    uiMode: 'password',
+    parameters: [
+      { id: 'salt', label: 'Salt', type: 'text', required: true, generateRandom: true, placeholder: 'Enter salt or generate random' },
+      { id: 'iterations', label: 'Iterations', type: 'number', required: true, defaultValue: 3, min: 1, max: 100 },
+      { id: 'memory', label: 'Memory (KB)', type: 'number', required: true, defaultValue: 65536, min: 1024 },
+      { id: 'parallelism', label: 'Parallelism', type: 'number', required: true, defaultValue: 4, min: 1, max: 16 },
+      { id: 'keyLength', label: 'Key Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 16, max: 64 }
+    ]
   },
   argon2d: {
     name: "Argon2d",
@@ -474,6 +514,14 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     npmPackage: "argon2",
     isSlow: true,
     outputLength: 32,
+    uiMode: 'password',
+    parameters: [
+      { id: 'salt', label: 'Salt', type: 'text', required: true, generateRandom: true, placeholder: 'Enter salt or generate random' },
+      { id: 'iterations', label: 'Iterations', type: 'number', required: true, defaultValue: 3, min: 1, max: 100 },
+      { id: 'memory', label: 'Memory (KB)', type: 'number', required: true, defaultValue: 65536, min: 1024 },
+      { id: 'parallelism', label: 'Parallelism', type: 'number', required: true, defaultValue: 4, min: 1, max: 16 },
+      { id: 'keyLength', label: 'Key Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 16, max: 64 }
+    ]
   },
   argon2id: {
     name: "Argon2id",
@@ -482,6 +530,14 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     npmPackage: "argon2",
     isSlow: true,
     outputLength: 32,
+    uiMode: 'password',
+    parameters: [
+      { id: 'salt', label: 'Salt', type: 'text', required: true, generateRandom: true, placeholder: 'Enter salt or generate random' },
+      { id: 'iterations', label: 'Iterations', type: 'number', required: true, defaultValue: 3, min: 1, max: 100 },
+      { id: 'memory', label: 'Memory (KB)', type: 'number', required: true, defaultValue: 65536, min: 1024 },
+      { id: 'parallelism', label: 'Parallelism', type: 'number', required: true, defaultValue: 4, min: 1, max: 16 },
+      { id: 'keyLength', label: 'Key Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 16, max: 64 }
+    ]
   },
 
   has160: {
@@ -671,6 +727,14 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     npmPackage: "scrypt-js",
     isSlow: true,
     outputLength: 32,
+    uiMode: 'password',
+    parameters: [
+      { id: 'salt', label: 'Salt', type: 'text', required: true, generateRandom: true, placeholder: 'Enter salt or generate random' },
+      { id: 'N', label: 'N (CPU/Memory cost)', type: 'number', required: true, defaultValue: 16384, min: 1024 },
+      { id: 'r', label: 'r (Block size)', type: 'number', required: true, defaultValue: 8, min: 1, max: 32 },
+      { id: 'p', label: 'p (Parallelism)', type: 'number', required: true, defaultValue: 1, min: 1, max: 16 },
+      { id: 'dkLen', label: 'Key Length (bytes)', type: 'number', required: false, defaultValue: 64, min: 16, max: 128 }
+    ]
   },
   pbkdf2: {
     name: "PBKDF2",
@@ -678,6 +742,12 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     category: "Password",
     isSlow: true,
     outputLength: 32,
+    uiMode: 'password',
+    parameters: [
+      { id: 'salt', label: 'Salt', type: 'text', required: true, generateRandom: true, placeholder: 'Enter salt or generate random' },
+      { id: 'iterations', label: 'Iterations', type: 'number', required: true, defaultValue: 10000, min: 1000, max: 1000000 },
+      { id: 'keyLength', label: 'Key Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 16, max: 64 }
+    ]
   },
 
   // MAC and KDF functions
@@ -686,12 +756,23 @@ const RAW_HASH_ALGORITHMS: Record<string, Omit<HashAlgorithm, "demo">> = {
     description: "Hash-based Message Authentication Code",
     category: "Modern",
     outputLength: 32,
+    uiMode: 'hmac',
+    parameters: [
+      { id: 'key', label: 'Key', type: 'text', required: true, placeholder: 'Enter HMAC key' }
+    ]
   },
   hkdf: {
     name: "HKDF",
     description: "HMAC-based Key Derivation Function",
     category: "Modern",
     outputLength: 32,
+    uiMode: 'hkdf',
+    parameters: [
+      { id: 'ikm', label: 'Input Key Material (IKM)', type: 'text', required: true, placeholder: 'Enter IKM' },
+      { id: 'salt', label: 'Salt', type: 'text', required: true, generateRandom: true },
+      { id: 'info', label: 'Info', type: 'text', required: false, placeholder: 'Context/application info' },
+      { id: 'keyLength', label: 'Key Length (bytes)', type: 'number', required: false, defaultValue: 32, min: 16, max: 64 }
+    ]
   },
 
   // Competition cryptographic hashes (moved to Modern)

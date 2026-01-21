@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { hashCategorySlugToName, HASH_TOOLS, HASH_ALGORITHMS, type HashToolResource } from "@/lib/hash-metadata";
+import { hashCategorySlugToName, HASH_TOOLS, HASH_ALGORITHMS, type HashToolResource, type ParameterConfig } from "@/lib/hash-metadata";
 import { categoryNameToSlug } from "@/lib/routing/slugs";
-import { computeHashClient, type HashResult } from "@/lib/hash/compute.client";
-import { Copy, Hash } from "lucide-react";
+import { computeHashClient, computeSimilarityComparison, type HashResult } from "@/lib/hash/compute.client";
+import { compareSimilarityHashes } from "@/lib/hash/similarity";
+import { Copy, Hash, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
@@ -22,14 +23,22 @@ interface ItemPageProps {
   }>;
 }
 
+interface ComparisonResult {
+  distance?: number;
+  similarity?: number;
+}
 
 export default function HashToolPageClient({ params }: ItemPageProps) {
   const resolvedParams = use(params);
   // Hash computation state
   const [inputText, setInputText] = useState("Hello, World!");
+  const [inputText2, setInputText2] = useState("Hello, World!");
   const [isComputing, setIsComputing] = useState(false);
   const [result, setResult] = useState<HashResult | null>(null);
+  const [result2, setResult2] = useState<HashResult | null>(null);
   const [outputFormat, setOutputFormat] = useState<"hex" | "base64">("hex");
+  const [algorithmParams, setAlgorithmParams] = useState<Record<string, string | number>>({});
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
 
   // Verify state
   const [expectedHash, setExpectedHash] = useState("");
@@ -46,41 +55,115 @@ export default function HashToolPageClient({ params }: ItemPageProps) {
     return HASH_TOOLS.find((t) => t.id === toolId) ?? null;
   }, [toolId]);
 
+  const algorithmConfig = useMemo(() => {
+    return HASH_ALGORITHMS[toolId];
+  }, [toolId]);
+
+  const uiMode = useMemo(() => {
+    return algorithmConfig?.uiMode || 'standard';
+  }, [algorithmConfig]);
+
+  const isSimilarity = uiMode === 'similarity';
+  const showVerify = !isSimilarity;
+
+  // Initialize algorithm parameters with defaults
+  useEffect(() => {
+    if (algorithmConfig?.parameters) {
+      const defaults: Record<string, string | number> = {};
+      algorithmConfig.parameters.forEach((param) => {
+        if (param.defaultValue !== undefined) {
+          defaults[param.id] = param.defaultValue;
+        }
+      });
+      setAlgorithmParams(defaults);
+    }
+  }, [algorithmConfig]);
+
   const relatedTools = useMemo<HashToolResource[]>(() => {
     if (!tool) return [];
     return HASH_TOOLS.filter(
-      (t) => t.category === tool.category && t.id !== tool.id,
+      (t: HashToolResource) => t.category === tool.category && t.id !== tool.id,
     ).slice(0, 6);
   }, [tool]);
 
+  // Generate random salt
+  const generateRandomSalt = useCallback(() => {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  }, []);
+
   const computeHash = useCallback(async () => {
-    if (!tool || !inputText.trim()) return;
+    if (!tool) return;
 
-    setIsComputing(true);
-    try {
-      // Use the client-side hash computation utility
-      const result = await computeHashClient(tool.id, inputText, outputFormat);
+    if (isSimilarity) {
+      // Similarity mode: compute both inputs
+      if (!inputText.trim() || !inputText2.trim()) return;
+      
+      setIsComputing(true);
+      try {
+        const comparison = await computeSimilarityComparison(
+          tool.id,
+          inputText,
+          inputText2,
+          outputFormat
+        );
 
-      // Update the result with the correct category from the tool
-      const finalResult: HashResult = {
-        ...result,
-        category: tool.category,
-        outputLength: HASH_ALGORITHMS[tool.id]?.outputLength || result.outputLength,
-      };
+        setResult(comparison.result1);
+        setResult2(comparison.result2);
 
-      setResult(finalResult);
+        // Compute similarity metrics
+        const metrics = await compareSimilarityHashes(
+          tool.id,
+          comparison.hash1,
+          comparison.hash2
+        );
+        setComparisonResult(metrics || null);
 
-      // Clear verify result when computing new hash
-      setVerifyResult(null);
-    } catch (error) {
-      console.error("Hash computation error:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to compute hash",
-      );
-    } finally {
-      setIsComputing(false);
+        setVerifyResult(null);
+      } catch (error) {
+        console.error("Hash computation error:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Failed to compute hash",
+        );
+      } finally {
+        setIsComputing(false);
+      }
+    } else {
+      // Standard mode: compute single input
+      if (!inputText.trim()) return;
+
+      setIsComputing(true);
+      try {
+        const result = await computeHashClient(
+          tool.id,
+          inputText,
+          outputFormat,
+          algorithmParams
+        );
+
+        const finalResult: HashResult = {
+          ...result,
+          category: tool.category,
+          outputLength: algorithmConfig?.outputLength || result.outputLength,
+        };
+
+        setResult(finalResult);
+        setResult2(null);
+        setComparisonResult(null);
+
+        // Clear verify result when computing new hash
+        setVerifyResult(null);
+      } catch (error) {
+        console.error("Hash computation error:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Failed to compute hash",
+        );
+      } finally {
+        setIsComputing(false);
+      }
     }
-  }, [tool, inputText, outputFormat]);
+  }, [tool, inputText, inputText2, outputFormat, algorithmParams, isSimilarity, algorithmConfig]);
 
   const verifyHash = useCallback(() => {
     if (!result || !expectedHash.trim()) {
@@ -116,32 +199,55 @@ export default function HashToolPageClient({ params }: ItemPageProps) {
     }
   }, []);
 
+  const updateParam = useCallback((paramId: string, value: string | number) => {
+    setAlgorithmParams((prev) => ({
+      ...prev,
+      [paramId]: value,
+    }));
+  }, []);
+
   useEffect(() => {
     // Auto-compute when input changes
     const timer = setTimeout(() => {
-      if (inputText.trim()) {
-        computeHash();
+      if (isSimilarity) {
+        if (inputText.trim() && inputText2.trim()) {
+          computeHash();
+        }
+      } else {
+        if (inputText.trim()) {
+          computeHash();
+        }
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [inputText, computeHash]);
+  }, [inputText, inputText2, computeHash, isSimilarity]);
 
   useEffect(() => {
-    // Re-compute when format changes
+    // Re-compute when format or parameters change
     if (result && result.format !== outputFormat) {
       computeHash();
     }
-  }, [outputFormat, computeHash]);
+  }, [outputFormat, computeHash, result]);
+
+  useEffect(() => {
+    // Re-compute when parameters change
+    if (algorithmParams && Object.keys(algorithmParams).length > 0) {
+      const timer = setTimeout(() => {
+        computeHash();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [algorithmParams, computeHash]);
 
   useEffect(() => {
     // Auto-verify when expected hash changes
-    if (expectedHash.trim() && result) {
+    if (expectedHash.trim() && result && showVerify) {
       verifyHash();
     } else {
       setVerifyResult(null);
     }
-  }, [expectedHash, verifyHash, result]);
+  }, [expectedHash, verifyHash, result, showVerify]);
 
   if (!tool) {
     return null;
@@ -187,32 +293,137 @@ export default function HashToolPageClient({ params }: ItemPageProps) {
             <CardHeader className="p-4">
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Hash className="h-4 w-4 sm:h-5 sm:w-5" />
-                Input Text
+                {isSimilarity ? "Input Texts" : "Input Text"}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-4">
-              <div>
-                <Label htmlFor="input-text" className="text-sm font-medium">
-                  Text to hash
-                </Label>
-                <textarea
-                  id="input-text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Enter text to compute hash..."
-                  className="mt-2 w-full h-32 p-3 border rounded-md resize-none font-mono text-sm"
-                  disabled={isComputing}
-                />
-              </div>
+              {isSimilarity ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="input-text-1" className="text-sm font-medium">
+                      Text 1
+                    </Label>
+                      <textarea
+                        id="input-text-1"
+                        value={inputText}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputText(e.target.value)}
+                        placeholder="Enter first text..."
+                        className="mt-2 w-full h-32 p-3 border rounded-md resize-none font-mono text-sm"
+                        disabled={isComputing}
+                      />
+                  </div>
+                  <div>
+                    <Label htmlFor="input-text-2" className="text-sm font-medium">
+                      Text 2
+                    </Label>
+                      <textarea
+                        id="input-text-2"
+                        value={inputText2}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputText2(e.target.value)}
+                        placeholder="Enter second text..."
+                        className="mt-2 w-full h-32 p-3 border rounded-md resize-none font-mono text-sm"
+                        disabled={isComputing}
+                      />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="input-text" className="text-sm font-medium">
+                    Text to hash
+                  </Label>
+                    <textarea
+                      id="input-text"
+                      value={inputText}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputText(e.target.value)}
+                      placeholder="Enter text to compute hash..."
+                      className="mt-2 w-full h-32 p-3 border rounded-md resize-none font-mono text-sm"
+                      disabled={isComputing}
+                    />
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          {/* Parameters Section */}
+          {algorithmConfig?.parameters && algorithmConfig.parameters.length > 0 && (
+            <Card>
+              <CardHeader className="p-4">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Hash className="h-4 w-4 sm:h-5 sm:w-5" />
+                  Parameters
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 space-y-4">
+                {algorithmConfig.parameters.map((param) => (
+                  <div key={param.id}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Label htmlFor={`param-${param.id}`} className="text-sm font-medium">
+                        {param.label}
+                        {param.required && <span className="text-red-500 ml-1">*</span>}
+                      </Label>
+                      {param.generateRandom && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const salt = generateRandomSalt();
+                            updateParam(param.id, salt);
+                          }}
+                          className="h-7 text-xs"
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Generate
+                        </Button>
+                      )}
+                    </div>
+                    {param.type === 'textarea' ? (
+                      <textarea
+                        id={`param-${param.id}`}
+                        value={String(algorithmParams[param.id] || '')}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateParam(param.id, e.target.value)}
+                        placeholder={param.placeholder}
+                        className="w-full p-3 border rounded-md resize-none font-mono text-sm"
+                        disabled={isComputing}
+                      />
+                    ) : param.type === 'number' ? (
+                      <Input
+                        id={`param-${param.id}`}
+                        type="number"
+                        value={algorithmParams[param.id] || ''}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const value = e.target.value === '' ? '' : Number(e.target.value);
+                          updateParam(param.id, value);
+                        }}
+                        placeholder={param.placeholder}
+                        min={param.min}
+                        max={param.max}
+                        className="font-mono text-sm"
+                        disabled={isComputing}
+                      />
+                    ) : (
+                      <Input
+                        id={`param-${param.id}`}
+                        type="text"
+                        value={String(algorithmParams[param.id] || '')}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateParam(param.id, e.target.value)}
+                        placeholder={param.placeholder}
+                        className="font-mono text-sm"
+                        disabled={isComputing}
+                      />
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Output Section */}
           <Card>
             <CardHeader className="p-4">
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Hash className="h-4 w-4 sm:h-5 sm:w-5" />
-                Hash Output
+                Hash Output{isSimilarity ? 's' : ''}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-4">
@@ -243,6 +454,49 @@ export default function HashToolPageClient({ params }: ItemPageProps) {
                     Computing hash...
                   </div>
                 </div>
+              ) : isSimilarity ? (
+                <div className="space-y-4">
+                  {result && (
+                    <div className="p-4 border rounded-md bg-muted/50 font-mono text-sm break-all">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Hash 1 ({result.format})
+                          </div>
+                          <div className="text-foreground">{result.hash}</div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(result.hash)}
+                          className="flex-shrink-0"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {result2 && (
+                    <div className="p-4 border rounded-md bg-muted/50 font-mono text-sm break-all">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Hash 2 ({result2.format})
+                          </div>
+                          <div className="text-foreground">{result2.hash}</div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(result2.hash)}
+                          className="flex-shrink-0"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : result ? (
                 <div className="p-4 border rounded-md bg-muted/50 font-mono text-sm break-all">
                   <div className="flex items-start justify-between gap-2">
@@ -270,48 +524,103 @@ export default function HashToolPageClient({ params }: ItemPageProps) {
             </CardContent>
           </Card>
 
-          {/* Verify Section */}
-          <Card>
-            <CardHeader className="p-4">
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <Hash className="h-4 w-4 sm:h-5 sm:w-5" />
-                Verify Hash
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0 space-y-4">
-              <div>
-                <Label htmlFor="expected-hash" className="text-sm font-medium">
-                  Expected {tool.name} hash
-                </Label>
-                <Input
-                  id="expected-hash"
-                  value={expectedHash}
-                  onChange={(e) => setExpectedHash(e.target.value)}
-                  placeholder={`Enter expected ${tool.name} hash...`}
-                  className="mt-2 font-mono text-sm"
-                />
-              </div>
-
-              {verifyResult && (
-                <div
-                  className={`p-3 rounded-md ${
-                    verifyResult.match
-                      ? "bg-green-50 border border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200"
-                      : "bg-red-50 border border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    {verifyResult.match ? "✓ Match" : "✗ No Match"}
-                  </div>
-                  {verifyResult.reason && (
-                    <div className="text-xs mt-1 opacity-90">
-                      {verifyResult.reason}
+          {/* Similarity Comparison Section */}
+          {isSimilarity && comparisonResult && (
+            <Card>
+              <CardHeader className="p-4">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Hash className="h-4 w-4 sm:h-5 sm:w-5" />
+                  Similarity Comparison
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 space-y-4">
+                {comparisonResult.similarity !== undefined && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Similarity Score:</span>
+                      <span className="text-lg font-bold">
+                        {(comparisonResult.similarity * 100).toFixed(2)}%
+                      </span>
                     </div>
-                  )}
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className="bg-primary h-2 rounded-full transition-all"
+                        style={{ width: `${comparisonResult.similarity * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {comparisonResult.distance !== undefined && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Distance:</span>
+                    <span className="text-sm font-mono">{comparisonResult.distance}</span>
+                  </div>
+                )}
+                {comparisonResult.similarity !== undefined && (
+                  <div
+                    className={`p-3 rounded-md text-sm ${
+                      comparisonResult.similarity > 0.7
+                        ? "bg-green-50 border border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200"
+                        : comparisonResult.similarity > 0.4
+                        ? "bg-yellow-50 border border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200"
+                        : "bg-red-50 border border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200"
+                    }`}
+                  >
+                    {comparisonResult.similarity > 0.7
+                      ? "✓ High similarity"
+                      : comparisonResult.similarity > 0.4
+                      ? "⚠ Moderate similarity"
+                      : "✗ Low similarity"}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Verify Section */}
+          {showVerify && (
+            <Card>
+              <CardHeader className="p-4">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Hash className="h-4 w-4 sm:h-5 sm:w-5" />
+                  Verify Hash
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 space-y-4">
+                <div>
+                  <Label htmlFor="expected-hash" className="text-sm font-medium">
+                    Expected {tool.name} hash
+                  </Label>
+                  <Input
+                    id="expected-hash"
+                    value={expectedHash}
+                    onChange={(e) => setExpectedHash(e.target.value)}
+                    placeholder={`Enter expected ${tool.name} hash...`}
+                    className="mt-2 font-mono text-sm"
+                  />
                 </div>
-              )}
-            </CardContent>
-          </Card>
+
+                {verifyResult && (
+                  <div
+                    className={`p-3 rounded-md ${
+                      verifyResult.match
+                        ? "bg-green-50 border border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200"
+                        : "bg-red-50 border border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {verifyResult.match ? "✓ Match" : "✗ No Match"}
+                    </div>
+                    {verifyResult.reason && (
+                      <div className="text-xs mt-1 opacity-90">
+                        {verifyResult.reason}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </motion.div>
 
         <motion.div
@@ -384,4 +693,3 @@ export default function HashToolPageClient({ params }: ItemPageProps) {
     </motion.div>
   );
 }
-
